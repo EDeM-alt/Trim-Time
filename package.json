@@ -1,0 +1,7 @@
+{
+  "name": "trimtime-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TrimTime booking platform launch scaffold",
+  "dependencies": { "@supabase/supabase-js": "^2.49.0" }
+}
