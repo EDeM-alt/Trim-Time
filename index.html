@@ -9,7 +9,19 @@
 <section class="section" id="shops"><div class="eyebrow">Discover local partners</div><h2>Find your next barber or stylist</h2><p class="muted">Only verified partner shops should be published here. Listings appear once the database is connected and shops are onboarded.</p><div id="shopList" class="shops"><div class="card">Loading partner shops…</div></div></section>
 <section class="section" id="booking"><div class="eyebrow">Quick appointment</div><h2>Book your slot</h2><p class="muted">Choose a partner and service. Sign in is required before a booking can be saved.</p><div class="booking-layout"><div class="panel"><form id="bookingForm"><div class="field"><label>Partner shop</label><select id="shopSelect" required><option value="">Select a shop</option></select></div><div class="field"><label>Service</label><select id="serviceSelect" required><option value="">Select a service</option></select></div><div class="formgrid"><div class="field"><label>Date</label><input id="bookDate" type="date" required></div><div class="field"><label>Start time</label><input id="bookTime" type="time" required></div></div><div class="notice">Appointment requests are subject to barber confirmation. Live slot locking becomes active after database setup.</div><button class="btn primary" style="width:100%">Request appointment</button></form></div><div class="panel"><h3>How booking works</h3><p class="muted">1. Choose a shop and service.<br>2. Select your preferred date and time.<br>3. Sign in and submit your request.<br>4. Follow the booking status in your account.<br>5. Pay through the secure checkout when payment is enabled.</p><div class="notice">Do not send your MoMo PIN to anyone. TrimTime will never ask for it.</div></div></div></section>
 <section class="section" id="account"><div class="eyebrow">Your account</div><h2>My appointments</h2><div class="panel" id="bookingHistory"><p class="muted">Sign in to view your appointments.</p></div></section>
-<section class="section hidden" id="barberSection"><div class="eyebrow">Partner workspace</div><h2>Appointments for your shop</h2><div class="panel" id="barberBookings"><p class="muted">Loading appointments…</p></div><div class="panel" id="ownerLocationPanel" style="margin-top:16px"><h3>Shop GPS location</h3><p class="muted">Loading your shop location…</p></div></section>
+<section class="section hidden" id="barberSection"><div class="eyebrow">Partner workspace</div><h2>Appointments for your shop</h2><div class="panel" id="barberBookings"><p class="muted">Loading appointments…</p></div><div class="panel" id="ownerLocationPanel" style="margin-top:16px"><h3>Shop GPS location</h3><p class="muted">Loading your shop location…</p></div>
+<div class="panel" id="serviceManagerPanel" style="margin-top:16px">
+  <h3>Manage shop services</h3>
+  <p class="muted">Add the services your shop offers, set prices in Ghana cedis and choose how long each service takes.</p>
+  <div class="field"><label>Choose shop</label><select id="manageServiceShop" onchange="loadManagedServices()"><option value="">Loading shops…</option></select></div>
+  <div class="formgrid">
+    <div class="field"><label>Service name</label><input id="newServiceName" placeholder="e.g. Haircut"></div>
+    <div class="field"><label>Price (GH₵)</label><input id="newServicePrice" type="number" min="0" step="0.01" placeholder="e.g. 50"></div>
+    <div class="field"><label>Duration (minutes)</label><input id="newServiceDuration" type="number" min="5" step="5" value="30"></div>
+  </div>
+  <button class="btn primary" type="button" onclick="addShopService()">Add service</button>
+  <div id="managedServicesList" style="margin-top:14px"><p class="muted">Choose a shop to manage its services.</p></div>
+</div></section>
 
 <section class="section hidden" id="adminSection">
   <div class="eyebrow">Platform administration</div>
@@ -49,7 +61,7 @@ function openAuth(){signup=false;authRender();$('authModal').classList.add('show
 async function submitAuth(){if(!sb){toast('Database setup is not complete yet');return}let email=$('authEmail').value.trim(),password=$('authPassword').value,name=$('authName').value.trim();if(!email||password.length<8){toast('Enter a valid email and password of at least 8 characters');return}let result;if(signup){result=await sb.auth.signUp({email,password,options:{data:{full_name:name,phone:$('authPhone').value.trim()}}})}else{result=await sb.auth.signInWithPassword({email,password})}if(result.error){toast(result.error.message);return}user=result.data.user;if(signup&&!result.data.session){toast('Check your email to verify your account, then sign in.')}else toast(signup?'Account created':'Signed in successfully');closeAuth();updateAuth();if(user){loadRole();loadBookings()}}
 function updateAuth(){$('authBtn').textContent=user?'Sign out':'Sign in';$('myBookingsBtn').textContent=user?'My bookings':'Sign in';$('barberBtn').classList.toggle('hidden',!user||!['barber','shop_owner','admin'].includes(userRole));$('adminBtn').classList.toggle('hidden',!user||userRole!=='admin');$('authBtn').onclick=async()=>{if(user){await sb.auth.signOut();user=null;userRole='customer';$('barberSection').classList.add('hidden');$('adminSection').classList.add('hidden');updateAuth();$('bookingHistory').innerHTML='<p class="muted">Sign in to view your appointments.</p>';toast('Signed out')}else openAuth()}}
 async function loadRole(){if(!sb||!user)return;const {data}=await sb.from('profiles').select('role').eq('id',user.id).single();userRole=data?.role||'customer';updateAuth()}
-async function showBarber(){if(!user||!['barber','shop_owner','admin'].includes(userRole)){toast('This account is not registered as a partner staff account.');return}$('barberSection').classList.remove('hidden');$('barberSection').scrollIntoView({behavior:'smooth'});const {data,error}=await sb.from('appointments').select('id,customer_id,starts_at,status,quoted_price_ghs,services(name),shops(name)').order('starts_at',{ascending:true}).limit(100);if(error){$('barberBookings').innerHTML='<p class="muted">Could not load appointments.</p>';return}$('barberBookings').innerHTML=data.length?data.map(b=>`<div class="booking"><b>Customer ${esc(String(b.customer_id).slice(0,8))}</b> · ${esc(b.shops?.name||'Shop')}<div>${esc(b.services?.name||'Service')} · ${money(b.quoted_price_ghs)}</div><div class="small muted">${new Date(b.starts_at).toLocaleString()}</div><div class="right" style="margin-top:8px"><span class="status">${esc(b.status)}</span><select aria-label="Update appointment status" onchange="setAppointmentStatus('${b.id}',this.value)"><option value="">Update status</option><option value="confirmed">Confirm</option><option value="completed">Complete</option><option value="cancelled">Cancel</option></select></div></div>`).join(''):'<p class="muted">No appointments have been assigned to this account.</p>';await loadOwnerLocationPanel()}
+async function showBarber(){if(!user||!['barber','shop_owner','admin'].includes(userRole)){toast('This account is not registered as a partner staff account.');return}$('barberSection').classList.remove('hidden');$('barberSection').scrollIntoView({behavior:'smooth'});const {data,error}=await sb.from('appointments').select('id,customer_id,starts_at,status,quoted_price_ghs,services(name),shops(name)').order('starts_at',{ascending:true}).limit(100);if(error){$('barberBookings').innerHTML='<p class="muted">Could not load appointments.</p>';return}$('barberBookings').innerHTML=data.length?data.map(b=>`<div class="booking"><b>Customer ${esc(String(b.customer_id).slice(0,8))}</b> · ${esc(b.shops?.name||'Shop')}<div>${esc(b.services?.name||'Service')} · ${money(b.quoted_price_ghs)}</div><div class="small muted">${new Date(b.starts_at).toLocaleString()}</div><div class="right" style="margin-top:8px"><span class="status">${esc(b.status)}</span><select aria-label="Update appointment status" onchange="setAppointmentStatus('${b.id}',this.value)"><option value="">Update status</option><option value="confirmed">Confirm</option><option value="completed">Complete</option><option value="cancelled">Cancel</option></select></div></div>`).join(''):'<p class="muted">No appointments have been assigned to this account.</p>';await loadOwnerLocationPanel();await loadServiceManager()}
 
 async function loadOwnerLocationPanel(){
   const panel=$('ownerLocationPanel');
@@ -81,6 +93,79 @@ function saveCurrentShopLocation(shopId,button){
     const message=error.code===1?'Location permission was denied. Allow location access in your browser settings.':error.code===2?'Your current location could not be determined. Try again outdoors.':'GPS request timed out. Please try again.';
     toast(message);
   },{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+}
+
+
+async function loadServiceManager(){
+  const panel=$('serviceManagerPanel');
+  if(!panel)return;
+  if(!user||!['shop_owner','admin'].includes(userRole)){panel.classList.add('hidden');return}
+  panel.classList.remove('hidden');
+  $('manageServiceShop').innerHTML='<option value="">Loading shops…</option>';
+  const query=sb.from('shops').select('id,name').order('name');
+  const {data,error}=userRole==='admin'?await query:await query.eq('owner_id',user.id);
+  if(error){$('manageServiceShop').innerHTML='<option value="">Could not load shops</option>';toast('Could not load shops for service management');return}
+  if(!data||!data.length){$('manageServiceShop').innerHTML='<option value="">No shop assigned</option>';$('managedServicesList').innerHTML='<p class="muted">No shop is assigned to this account yet.</p>';return}
+  const previous=$('manageServiceShop').value;
+  $('manageServiceShop').innerHTML=data.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  if(data.some(s=>s.id===previous))$('manageServiceShop').value=previous;
+  await loadManagedServices();
+}
+async function loadManagedServices(){
+  const shopId=$('manageServiceShop').value;
+  const list=$('managedServicesList');
+  if(!shopId){list.innerHTML='<p class="muted">Choose a shop to manage its services.</p>';return}
+  list.innerHTML='<p class="muted">Loading services…</p>';
+  const {data,error}=await sb.from('services').select('id,name,price_ghs,duration_minutes,is_active').eq('shop_id',shopId).order('name');
+  if(error){list.innerHTML='<p class="muted">Could not load services: '+esc(error.message)+'</p>';return}
+  if(!data||!data.length){list.innerHTML='<p class="muted">No services added yet. Use the form above to add your first service.</p>';return}
+  list.innerHTML=data.map(s=>`<div class="booking">
+    <div class="formgrid">
+      <div class="field"><label>Service name</label><input id="svc-name-${s.id}" value="${esc(s.name)}"></div>
+      <div class="field"><label>Price (GH₵)</label><input id="svc-price-${s.id}" type="number" min="0" step="0.01" value="${Number(s.price_ghs)}"></div>
+      <div class="field"><label>Duration (minutes)</label><input id="svc-duration-${s.id}" type="number" min="5" step="5" value="${Number(s.duration_minutes)}"></div>
+    </div>
+    <div class="right" style="flex-wrap:wrap">
+      <span class="status">${s.is_active?'Active':'Inactive'}</span>
+      <button class="btn light" type="button" onclick="saveShopService('${s.id}')">Save changes</button>
+      <button class="btn ${s.is_active?'light':'primary'}" type="button" onclick="toggleShopService('${s.id}',${!s.is_active})">${s.is_active?'Deactivate':'Activate'}</button>
+    </div>
+  </div>`).join('');
+}
+async function addShopService(){
+  if(!user||!['shop_owner','admin'].includes(userRole)){toast('Shop owner or administrator access required');return}
+  const shopId=$('manageServiceShop').value;
+  const name=$('newServiceName').value.trim();
+  const price=Number($('newServicePrice').value);
+  const duration=Number($('newServiceDuration').value);
+  if(!shopId){toast('Choose a shop first');return}
+  if(!name||$('newServicePrice').value===''||!Number.isFinite(price)||price<0||!Number.isInteger(duration)||duration<5){toast('Enter a service name, valid price and duration of at least 5 minutes');return}
+  const {error}=await sb.from('services').insert({shop_id:shopId,name,price_ghs:price,duration_minutes:duration,is_active:true,barber_id:null});
+  if(error){toast('Could not add service: '+error.message);return}
+  $('newServiceName').value='';$('newServicePrice').value='';
+  toast('Service added successfully');
+  await loadManagedServices();
+  if($('shopSelect').value===shopId)await loadServices();
+}
+async function saveShopService(serviceId){
+  if(!user||!['shop_owner','admin'].includes(userRole)){toast('Shop owner or administrator access required');return}
+  const name=$('svc-name-'+serviceId).value.trim();
+  const price=Number($('svc-price-'+serviceId).value);
+  const duration=Number($('svc-duration-'+serviceId).value);
+  if(!name||!Number.isFinite(price)||price<0||!Number.isInteger(duration)||duration<5){toast('Check the service name, price and duration');return}
+  const {error}=await sb.from('services').update({name,price_ghs:price,duration_minutes:duration}).eq('id',serviceId);
+  if(error){toast('Could not update service: '+error.message);return}
+  toast('Service updated');
+  await loadManagedServices();
+  await loadServices();
+}
+async function toggleShopService(serviceId,isActive){
+  if(!user||!['shop_owner','admin'].includes(userRole)){toast('Shop owner or administrator access required');return}
+  const {error}=await sb.from('services').update({is_active:isActive}).eq('id',serviceId);
+  if(error){toast('Could not change service status: '+error.message);return}
+  toast(isActive?'Service activated':'Service deactivated');
+  await loadManagedServices();
+  await loadServices();
 }
 
 async function showAdmin(){
