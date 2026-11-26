@@ -76,7 +76,7 @@ async function adminCreateShop(){
 async function adminLoadShops(){
   if(!user||userRole!=='admin')return;
   $('adminShops').innerHTML='<p class="muted">Loading shops…</p>';
-  const {data,error}=await sb.from('shops').select('id,name,location,is_active,owner_id,contact_phone,created_at').order('created_at',{ascending:false});
+  const {data,error}=await sb.from('shops').select('id,name,location,description,shop_type,is_active,owner_id,contact_phone,created_at').order('created_at',{ascending:false});
   if(error){$('adminShops').innerHTML='<p class="muted">Could not load shops: '+esc(error.message)+'</p>';return}
   if(!data||!data.length){$('adminShops').innerHTML='<p class="muted">No partner shops have been created yet.</p>';return}
   $('adminShops').innerHTML=data.map(s=>`
@@ -85,15 +85,55 @@ async function adminLoadShops(){
         <b>${esc(s.name)}</b><span class="status">${s.is_active?'Published':'Inactive / awaiting approval'}</span>
       </div>
       <div class="small muted">${esc(s.location||'Location not provided')} · ${esc(s.contact_phone||'No contact number')}</div>
+      <div class="small muted">${esc(s.description||'No description')} · ${esc(s.shop_type||'Barbershop')}</div>
       <div class="small muted">Shop ID: ${esc(s.id)}</div>
       <div class="small muted">Owner profile ID: ${esc(s.owner_id||'Not assigned')}</div>
-      <div class="field"><label>Assign owner using their TrimTime profile ID</label><input id="owner-${s.id}" placeholder="Paste owner's profile UUID"></div>
-      <div class="right" style="flex-wrap:wrap">
+      <div class="right" style="flex-wrap:wrap;margin-top:10px">
+        <button class="btn light" type="button" onclick="adminToggleEdit('${s.id}')">Edit shop</button>
         <button class="btn light" type="button" onclick="adminAssignOwner('${s.id}')">Assign owner</button>
         <button class="btn primary" type="button" onclick="adminSetShopStatus('${s.id}',${!s.is_active})">${s.is_active?'Deactivate shop':'Approve & publish'}</button>
       </div>
+      <div id="edit-shop-${s.id}" class="panel hidden" style="margin-top:12px">
+        <h4>Edit shop details</h4>
+        <div class="field"><label>Shop name</label><input id="edit-name-${s.id}" value="${esc(s.name||'')}"></div>
+        <div class="field"><label>Location</label><input id="edit-location-${s.id}" value="${esc(s.location||'')}"></div>
+        <div class="field"><label>Description</label><input id="edit-description-${s.id}" value="${esc(s.description||'')}"></div>
+        <div class="field"><label>Shop type</label><select id="edit-type-${s.id}">
+          <option ${s.shop_type==='Barbershop'?'selected':''}>Barbershop</option>
+          <option ${s.shop_type==='Salon'?'selected':''}>Salon</option>
+          <option ${s.shop_type==='Unisex grooming'?'selected':''}>Unisex grooming</option>
+        </select></div>
+        <div class="field"><label>Contact phone</label><input id="edit-phone-${s.id}" type="tel" value="${esc(s.contact_phone||'')}"></div>
+        <div class="right" style="flex-wrap:wrap">
+          <button class="btn primary" type="button" onclick="adminSaveShop('${s.id}')">Save changes</button>
+          <button class="btn light" type="button" onclick="adminToggleEdit('${s.id}')">Cancel</button>
+        </div>
+      </div>
+      <div class="field"><label>Assign owner using their TrimTime profile ID</label><input id="owner-${s.id}" placeholder="Paste owner's profile UUID"></div>
     </div>`).join('');
 }
+function adminToggleEdit(shopId){
+  const panel=$('edit-shop-'+shopId);
+  if(panel)panel.classList.toggle('hidden');
+}
+async function adminSaveShop(shopId){
+  if(!user||userRole!=='admin'){toast('Administrator access required');return}
+  const name=$('edit-name-'+shopId).value.trim();
+  const location=$('edit-location-'+shopId).value.trim();
+  if(!name||!location){toast('Shop name and location are required');return}
+  const {error}=await sb.rpc('admin_update_shop',{
+    p_shop_id:shopId,
+    p_name:name,
+    p_location:location,
+    p_description:$('edit-description-'+shopId).value.trim()||null,
+    p_shop_type:$('edit-type-'+shopId).value,
+    p_contact_phone:$('edit-phone-'+shopId).value.trim()||null
+  });
+  if(error){toast('Could not update shop: '+error.message);return}
+  toast('Shop details updated successfully');
+  await adminLoadShops();
+}
+
 async function adminAssignOwner(shopId){
   if(!user||userRole!=='admin'){toast('Administrator access required');return}
   const ownerId=$('owner-'+shopId).value.trim();
